@@ -5,9 +5,12 @@ Implements the authoritative aggregation mathematics from the LLD:
 - Rank-weighted support calculation
 - Raw confidence computation
 - Multi-label aggregation
+
+NOW DECOUPLED: Works with pre-selected labels from selectors.
+Focus: PRECISION (refine the selected labels with confidence scores)
 """
 
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Optional
 from dataclasses import dataclass
 import numpy as np
 from collections import defaultdict
@@ -32,6 +35,12 @@ class RankWeightedAggregator:
         where w(i) = 1 / log₂(i + 1)
         
         c_raw(x,ℓ) = support(x,ℓ) / mass(x)
+    
+    PRECISION FOCUS:
+    - Takes pre-selected candidate labels (from selector)
+    - Computes confidence scores only for those labels
+    - Ranks labels by confidence
+    - Filters by minimum confidence
     """
     
     def __init__(self, labels_db: Dict[str, List[str]]):
@@ -60,14 +69,18 @@ class RankWeightedAggregator:
     def aggregate(
         self,
         neighbors: List[Neighbor],
+        candidate_labels: Optional[Set[str]] = None,
         min_support: float = 0.0,
         top_k_labels: int = None,
     ) -> List[LabelScore]:
         """
         Aggregate labels from neighbors using rank-weighted voting.
         
+        NEW: Can optionally filter to only candidate_labels (from selector).
+        
         Args:
             neighbors: List of Neighbor objects from kNN search
+            candidate_labels: Optional set of labels to consider (from selector)
             min_support: Minimum support threshold (default: 0.0)
             top_k_labels: Return only top K labels by confidence (default: all)
         
@@ -84,6 +97,13 @@ class RankWeightedAggregator:
         for neighbor in neighbors:
             # Get labels for this neighbor
             neighbor_labels = self.labels_db.get(neighbor.asset_id, [])
+            
+            # Filter to candidate labels if provided
+            if candidate_labels is not None:
+                neighbor_labels = [
+                    label_id for label_id in neighbor_labels
+                    if label_id in candidate_labels
+                ]
             
             # Compute contribution of this neighbor
             rank_w = self.rank_weight(neighbor.rank)
